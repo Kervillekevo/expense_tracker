@@ -70,6 +70,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<bool> _confirmDelete(Transaction tx) async {
+    return await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Delete transaction?"),
+        content: Text(
+          "This will permanently delete '${tx.category}' (${_formatAmount(tx.amount)}).",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text(
+              "Delete",
+              style: TextStyle(color: _expenseColor, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    ) ??
+        false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -213,6 +239,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             color: _primaryDark,
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Tap to edit \u00b7 swipe to delete",
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade500,
+                          ),
+                        ),
                         const SizedBox(height: 12),
                       ],
                     ),
@@ -273,73 +307,107 @@ class _HomeScreenState extends State<HomeScreen> {
                         final isExpense = tx.type == "Expense";
                         final color = isExpense ? _expenseColor : _incomeColor;
 
-                        return Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: _fill,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: _border),
+                        return Dismissible(
+                          key: ValueKey(tx.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            decoration: BoxDecoration(
+                              color: _expenseColor,
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.white,
+                            ),
                           ),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.12),
-                                  shape: BoxShape.circle,
+                          confirmDismiss: (_) => _confirmDelete(tx),
+                          onDismissed: (_) {
+                            DatabaseProvider.db.transactionDao
+                                .deleteTransaction(tx.id);
+                          },
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(14),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AddTransactionScreen(
+                                    existingTransaction: tx,
+                                  ),
                                 ),
-                                child: Icon(
-                                  _iconForCategory(tx.category),
-                                  color: color,
-                                  size: 20,
-                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: _fill,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: _border),
                               ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      tx.category,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                        color: _primaryDark,
-                                      ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: color.withValues(alpha: 0.12),
+                                      shape: BoxShape.circle,
                                     ),
-                                    if (tx.note != null && tx.note!.isNotEmpty) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        tx.note!,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade600,
+                                    child: Icon(
+                                      _iconForCategory(tx.category),
+                                      color: color,
+                                      size: 20,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          tx.category,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: _primaryDark,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      "${tx.date.day}/${tx.date.month}/${tx.date.year}",
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey.shade500,
-                                      ),
+                                        if (tx.note != null && tx.note!.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            tx.note!,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          "${tx.date.day}/${tx.date.month}/${tx.date.year}",
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: Colors.grey.shade500,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    "${isExpense ? '-' : '+'}${_formatAmount(tx.amount)}",
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: color,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "${isExpense ? '-' : '+'}${_formatAmount(tx.amount)}",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: color,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         );
                       },

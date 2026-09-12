@@ -4,7 +4,9 @@ import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
 
 class AddTransactionScreen extends StatefulWidget {
-  const AddTransactionScreen({super.key});
+  const AddTransactionScreen({super.key, this.existingTransaction});
+
+  final Transaction? existingTransaction;
 
   @override
   State<AddTransactionScreen> createState() => _AddTransactionScreenState();
@@ -21,7 +23,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   TextEditingController amountController = TextEditingController();
   TextEditingController noteController = TextEditingController();
 
-  final List<String> category = ["Food", "Entertainment", "Rent", "Other"];
   String selectedCategory = "Food";
 
   final List<String> typeOptions = ["Expense", "Income"];
@@ -29,6 +30,21 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
   DateTime selectedDate = DateTime.now();
   bool isSaving = false;
+
+  bool get isEditing => widget.existingTransaction != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existingTransaction;
+    if (existing != null) {
+      amountController.text = existing.amount.toString();
+      noteController.text = existing.note ?? '';
+      selectedType = existing.type;
+      selectedCategory = existing.category;
+      selectedDate = existing.date;
+    }
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -54,14 +70,28 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     if (!formkey.currentState!.validate()) return;
     setState(() => isSaving = true);
     try {
-      final entry = TransactionsCompanion.insert(
-        amount: double.parse(amountController.text.trim()),
-        type: selectedType,
-        category: selectedCategory,
-        date: selectedDate,
-        note: Value(noteController.text.trim()),
-      );
-      await DatabaseProvider.db.transactionDao.insertTransaction(entry);
+      if (isEditing) {
+        final updated = widget.existingTransaction!.copyWith(
+          amount: double.parse(amountController.text.trim()),
+          type: selectedType,
+          category: selectedCategory,
+          date: selectedDate,
+          note: Value(noteController.text.trim()),
+          updatedAt: DateTime.now(),
+        );
+        await DatabaseProvider.db.transactionDao.updateTransaction(
+          updated.toCompanion(false),
+        );
+      } else {
+        final entry = TransactionsCompanion.insert(
+          amount: double.parse(amountController.text.trim()),
+          type: selectedType,
+          category: selectedCategory,
+          date: selectedDate,
+          note: Value(noteController.text.trim()),
+        );
+        await DatabaseProvider.db.transactionDao.insertTransaction(entry);
+      }
       if (context.mounted) {
         Navigator.pop(context);
       }
@@ -118,9 +148,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         iconTheme: const IconThemeData(color: _primaryDark),
-        title: const Text(
-          "Add Transaction",
-          style: TextStyle(
+        title: Text(
+          isEditing ? "Edit Transaction" : "Add Transaction",
+          style: const TextStyle(
             color: _primaryDark,
             fontWeight: FontWeight.bold,
             fontSize: 18,
@@ -222,16 +252,53 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
                 const SizedBox(height: 20),
 
-                DropdownButtonFormField<String>(
-                  initialValue: selectedCategory,
-                  decoration: _decoration(
-                    label: "Category",
-                    icon: Icons.category_outlined,
-                  ),
-                  items: category.map((cat) {
-                    return DropdownMenuItem(value: cat, child: Text(cat));
-                  }).toList(),
-                  onChanged: (value) => setState(() => selectedCategory = value!),
+                StreamBuilder<List<Category>>(
+                  stream: DatabaseProvider.db.categoryDao.watchAllCategories(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 12),
+                        child: LinearProgressIndicator(
+                          minHeight: 2,
+                          color: _primary,
+                        ),
+                      );
+                    }
+
+                    final categoryList = snapshot.data!;
+                    if (categoryList.isEmpty) {
+                      return const Text(
+                        "No categories yet. Add one first.",
+                        style: TextStyle(color: _expenseColor, fontSize: 13),
+                      );
+                    }
+
+                    final names = categoryList.map((c) => c.name).toList();
+
+                    // If the currently selected category no longer exists
+                    // (e.g. it was deleted), fall back to the first available
+                    // one instead of crashing the dropdown.
+                    if (!names.contains(selectedCategory)) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (mounted) {
+                          setState(() => selectedCategory = names.first);
+                        }
+                      });
+                    }
+
+                    return DropdownButtonFormField<String>(
+                      initialValue:
+                      names.contains(selectedCategory) ? selectedCategory : names.first,
+                      decoration: _decoration(
+                        label: "Category",
+                        icon: Icons.category_outlined,
+                      ),
+                      items: names.map((name) {
+                        return DropdownMenuItem(value: name, child: Text(name));
+                      }).toList(),
+                      onChanged: (value) => setState(() => selectedCategory = value!),
+                    );
+                  },
                 ),
 
                 const SizedBox(height: 20),
@@ -289,7 +356,9 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       ),
                     )
                         : Text(
-                      isExpense ? "Save Expense" : "Save Income",
+                      isEditing
+                          ? "Update"
+                          : (isExpense ? "Save Expense" : "Save Income"),
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,

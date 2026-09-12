@@ -5,6 +5,7 @@ class Transactions extends Table{
   TextColumn get type => text()();
   TextColumn get category => text()();
   TextColumn get note => text().nullable()();
+
   DateTimeColumn get date => dateTime()();
   TextColumn get receiptImageUrl => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
