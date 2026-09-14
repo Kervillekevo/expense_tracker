@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../auth/data/auth_service.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../transactions/presentation/add_transaction_screen.dart';
@@ -41,7 +42,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _formatAmount(double amount) {
-    // Simple thousands separator without needing the intl package.
     final isNegative = amount < 0;
     final fixed = amount.abs().toStringAsFixed(2);
     final parts = fixed.split('.');
@@ -67,6 +67,24 @@ class _HomeScreenState extends State<HomeScreen> {
         return Icons.payments_outlined;
       default:
         return Icons.receipt_long_outlined;
+    }
+  }
+
+  Color _colorForCategory(String category) {
+    switch (category.toLowerCase()) {
+      case 'food':
+        return const Color(0xFFEF6C00);
+      case 'entertainment':
+        return const Color(0xFF7B61FF);
+      case 'rent':
+        return const Color(0xFF1E88E5);
+      case 'salary':
+        return _primary;
+      case 'other':
+        return const Color(0xFF757575);
+      default:
+        final hue = (category.hashCode % 360).toDouble().abs();
+        return HSLColor.fromAHSL(1, hue, 0.55, 0.5).toColor();
     }
   }
 
@@ -131,11 +149,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
             double totalIncome = 0;
             double totalExpense = 0;
+            final Map<String, double> expenseByCategory = {};
             for (final tx in transactions) {
               if (tx.type == "Income") {
                 totalIncome += tx.amount;
               } else {
                 totalExpense += tx.amount;
+                expenseByCategory[tx.category] =
+                    (expenseByCategory[tx.category] ?? 0) + tx.amount;
               }
             }
             final balance = totalIncome - totalExpense;
@@ -148,7 +169,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Balance summary card
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(22),
@@ -229,7 +249,39 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 20),
+
+                        if (expenseByCategory.isNotEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(18),
+                            decoration: BoxDecoration(
+                              color: _fill,
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(color: _border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "Spending by category",
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: _primaryDark,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                _CategoryDonutChart(
+                                  categoryTotals: expenseByCategory,
+                                  colorForCategory: _colorForCategory,
+                                  formatAmount: _formatAmount,
+                                ),
+                              ],
+                            ),
+                          ),
+
+                        const SizedBox(height: 24),
 
                         const Text(
                           "Recent transactions",
@@ -305,7 +357,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemBuilder: (context, index) {
                         final tx = transactions[index];
                         final isExpense = tx.type == "Expense";
-                        final color = isExpense ? _expenseColor : _incomeColor;
+                        final amountColor = isExpense ? _expenseColor : _incomeColor;
+                        final categoryColor = _colorForCategory(tx.category);
 
                         return Dismissible(
                           key: ValueKey(tx.id),
@@ -351,12 +404,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(10),
                                     decoration: BoxDecoration(
-                                      color: color.withValues(alpha: 0.12),
+                                      color: categoryColor.withValues(alpha: 0.14),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Icon(
                                       _iconForCategory(tx.category),
-                                      color: color,
+                                      color: categoryColor,
                                       size: 20,
                                     ),
                                   ),
@@ -402,7 +455,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 14,
-                                      color: color,
+                                      color: amountColor,
                                     ),
                                   ),
                                 ],
@@ -476,6 +529,112 @@ class _SummaryPill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CategoryDonutChart extends StatelessWidget {
+  const _CategoryDonutChart({
+    required this.categoryTotals,
+    required this.colorForCategory,
+    required this.formatAmount,
+  });
+
+  final Map<String, double> categoryTotals;
+  final Color Function(String) colorForCategory;
+  final String Function(double) formatAmount;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = categoryTotals.values.fold<double>(0, (a, b) => a + b);
+    final sortedEntries = categoryTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(
+          width: 110,
+          height: 110,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              PieChart(
+                PieChartData(
+                  sections: sortedEntries.map((e) {
+                    return PieChartSectionData(
+                      value: e.value,
+                      color: colorForCategory(e.key),
+                      radius: 18,
+                      showTitle: false,
+                    );
+                  }).toList(),
+                  sectionsSpace: 2,
+                  centerSpaceRadius: 36,
+                ),
+                duration: const Duration(milliseconds: 400),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    formatAmount(total),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Color(0xFF0D3B2E),
+                    ),
+                  ),
+                  Text(
+                    "spent",
+                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 18),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: sortedEntries.take(5).map((e) {
+              final pct = total > 0 ? (e.value / total * 100) : 0.0;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: colorForCategory(e.key),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        e.key,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF0D3B2E),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      "${pct.toStringAsFixed(0)}%",
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
     );
   }
 }
