@@ -19,7 +19,18 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (Migrator m) => m.createAll(),
+    onUpgrade: (Migrator m, int from, int to) async {
+      if (from < 2) {
+        // Added Categories.type (Expense/Income) in schema version 2.
+        await m.addColumn(categories, categories.type);
+      }
+    },
+  );
 }
 
 LazyDatabase _openConnection() {

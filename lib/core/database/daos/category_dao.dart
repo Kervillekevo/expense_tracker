@@ -11,6 +11,10 @@ class CategoryDao extends DatabaseAccessor<AppDatabase> with _$CategoryDaoMixin 
   Future<List<Category>> getAllCategories() => select(categories).get();
   Stream<List<Category>> watchAllCategories() => select(categories).watch();
 
+  /// Only categories matching the given type ("Expense" or "Income").
+  Stream<List<Category>> watchCategoriesByType(String type) =>
+      (select(categories)..where((c) => c.type.equals(type))).watch();
+
   Future<int> insertCategory(CategoriesCompanion entry) =>
       into(categories).insert(entry);
 
@@ -27,40 +31,23 @@ class CategoryDao extends DatabaseAccessor<AppDatabase> with _$CategoryDaoMixin 
     if (existing.isNotEmpty) return;
 
     final defaults = [
-      CategoriesCompanion.insert(
-        name: "Food",
-        icon: "restaurant",
-        color: "#2E7D5B",
-        isDefault: const Value(true),
-      ),
-      CategoriesCompanion.insert(
-        name: "Entertainment",
-        icon: "movie",
-        color: "#2E7D5B",
-        isDefault: const Value(true),
-      ),
-      CategoriesCompanion.insert(
-        name: "Rent",
-        icon: "home",
-        color: "#2E7D5B",
-        isDefault: const Value(true),
-      ),
-      CategoriesCompanion.insert(
-        name: "Salary",
-        icon: "payments",
-        color: "#2E7D5B",
-        isDefault: const Value(true),
-      ),
-      CategoriesCompanion.insert(
-        name: "Other",
-        icon: "receipt_long",
-        color: "#2E7D5B",
-        isDefault: const Value(true),
-      ),
+      ('Food', 'restaurant', '#EF6C00', 'Expense'),
+      ('Entertainment', 'movie', '#7B61FF', 'Expense'),
+      ('Rent', 'home', '#2E7D5B', 'Expense'),
+      ('Salary', 'payments', '#2E7D5B', 'Income'),
+      ('Other', 'receipt_long', '#757575', 'Expense'),
     ];
 
-    for (final entry in defaults) {
-      await insertCategory(entry);
+    for (final (name, icon, color, type) in defaults) {
+      await insertCategory(
+        CategoriesCompanion.insert(
+          name: name,
+          icon: icon,
+          color: color,
+          type: Value(type),
+          isDefault: const Value(true),
+        ),
+      );
     }
   }
 }

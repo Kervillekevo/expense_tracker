@@ -6,8 +6,17 @@ class AuthService{
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  Future<UserCredential> register(String email, String password) async {
-    return await _auth.createUserWithEmailAndPassword(email: email, password: password);
+  Future<UserCredential> register(String email, String password, String name) async {
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+
+    // Save the name onto the newly created Firebase user's profile.
+    await credential.user?.updateDisplayName(name.trim());
+    await credential.user?.reload();
+
+    return credential;
   }
 
   Future<UserCredential> login(String email, String password) async {
@@ -54,6 +63,7 @@ class AuthService{
   }
 
   Future<void> resetPassword(String email) async{
-    return await _auth.sendPasswordResetEmail(email: email);
+    await _auth.sendPasswordResetEmail(email: email);
   }
+
 }

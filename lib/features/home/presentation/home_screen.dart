@@ -3,6 +3,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../auth/data/auth_service.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../transactions/presentation/add_transaction_screen.dart';
+import '../../categories/presentation/category_screen.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
 
@@ -132,6 +133,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CategoryScreen()),
+              );
+            },
+            icon: const Icon(Icons.category_outlined, color: _primary),
+            tooltip: "Manage categories",
+          ),
           IconButton(
             onPressed: logout,
             icon: const Icon(Icons.logout, color: _primary),

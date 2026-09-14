@@ -16,31 +16,6 @@ void main() async {
   // Safe to call on every launch — it no-ops once categories already exist.
   await DatabaseProvider.db.categoryDao.seedDefaultCategories();
 
-  Future<void> _seedDefaultCategories() async {
-    final dao = DatabaseProvider.db.categoryDao;
-    final existing = await dao.getAllCategories();
-    if (existing.isEmpty) {
-      final defaults = [
-        ('Food', 'restaurant', '#EF6C00'),
-        ('Transport', 'directions_car', '#1E88E5'),
-        ('Entertainment', 'movie', '#7B61FF'),
-        ('Rent', 'home', '#2E7D5B'),
-        ('Salary', 'payments', '#2E7D5B'),
-        ('Other', 'receipt_long', '#757575'),
-      ];
-      for (final (name, icon, color) in defaults) {
-        await dao.insertCategory(
-          CategoriesCompanion.insert(
-            name: name,
-            icon: icon,
-            color: color,
-            isDefault: const Value(true),
-          ),
-        );
-      }
-    }
-  }
-
   runApp(const MyApp());
 }
 
@@ -71,8 +46,6 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
-        // Firebase is still checking whether a session was persisted from
-        // a previous launch — show a brief loading state, not a screen flash.
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             backgroundColor: Colors.white,
@@ -82,7 +55,6 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        // snapshot.data is a User if signed in, or null if not.
         if (snapshot.hasData) {
           return const HomeScreen();
         }

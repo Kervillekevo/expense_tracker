@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:drift/drift.dart' show Value;
 import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/utils/category_icons.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   const AddTransactionScreen({super.key, this.existingTransaction});
@@ -166,6 +167,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
 
+                // Expense / Income toggle — drives which categories show below
                 Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
@@ -252,8 +254,23 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
                 const SizedBox(height: 20),
 
+                Text(
+                  "Category",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Only shows categories matching the selected type — an
+                // Income transaction never sees expense categories and
+                // vice versa.
                 StreamBuilder<List<Category>>(
-                  stream: DatabaseProvider.db.categoryDao.watchAllCategories(),
+                  key: ValueKey(selectedType),
+                  stream: DatabaseProvider.db.categoryDao
+                      .watchCategoriesByType(selectedType),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
                       return const Padding(
@@ -267,17 +284,21 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
                     final categoryList = snapshot.data!;
                     if (categoryList.isEmpty) {
-                      return const Text(
-                        "No categories yet. Add one first.",
-                        style: TextStyle(color: _expenseColor, fontSize: 13),
+                      return Text(
+                        "No $selectedType categories yet. Add one in Categories.",
+                        style: const TextStyle(color: _expenseColor, fontSize: 13),
                       );
                     }
 
                     final names = categoryList.map((c) => c.name).toList();
+                    final categoryByName = {
+                      for (final c in categoryList) c.name: c,
+                    };
 
-                    // If the currently selected category no longer exists
-                    // (e.g. it was deleted), fall back to the first available
-                    // one instead of crashing the dropdown.
+                    // If the currently selected category doesn't belong to
+                    // this type (e.g. the user just switched the toggle, or
+                    // the category was deleted), fall back to the first
+                    // available one instead of crashing the dropdown.
                     if (!names.contains(selectedCategory)) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         if (mounted) {
@@ -290,11 +311,34 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                       initialValue:
                       names.contains(selectedCategory) ? selectedCategory : names.first,
                       decoration: _decoration(
-                        label: "Category",
+                        label: "Select category",
                         icon: Icons.category_outlined,
-                      ),
+                      ).copyWith(prefixIcon: null),
                       items: names.map((name) {
-                        return DropdownMenuItem(value: name, child: Text(name));
+                        final category = categoryByName[name]!;
+                        final color = colorFromHex(category.color);
+                        return DropdownMenuItem(
+                          value: name,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 26,
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.14),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  iconFromKey(category.icon),
+                                  color: color,
+                                  size: 14,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Text(name),
+                            ],
+                          ),
+                        );
                       }).toList(),
                       onChanged: (value) => setState(() => selectedCategory = value!),
                     );
