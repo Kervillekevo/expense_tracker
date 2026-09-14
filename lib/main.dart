@@ -16,6 +16,31 @@ void main() async {
   // Safe to call on every launch — it no-ops once categories already exist.
   await DatabaseProvider.db.categoryDao.seedDefaultCategories();
 
+  Future<void> _seedDefaultCategories() async {
+    final dao = DatabaseProvider.db.categoryDao;
+    final existing = await dao.getAllCategories();
+    if (existing.isEmpty) {
+      final defaults = [
+        ('Food', 'restaurant', '#EF6C00'),
+        ('Transport', 'directions_car', '#1E88E5'),
+        ('Entertainment', 'movie', '#7B61FF'),
+        ('Rent', 'home', '#2E7D5B'),
+        ('Salary', 'payments', '#2E7D5B'),
+        ('Other', 'receipt_long', '#757575'),
+      ];
+      for (final (name, icon, color) in defaults) {
+        await dao.insertCategory(
+          CategoriesCompanion.insert(
+            name: name,
+            icon: icon,
+            color: color,
+            isDefault: const Value(true),
+          ),
+        );
+      }
+    }
+  }
+
   runApp(const MyApp());
 }
 
