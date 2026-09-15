@@ -4,6 +4,7 @@ import '../../auth/data/auth_service.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../transactions/presentation/add_transaction_screen.dart';
 import '../../categories/presentation/category_screen.dart';
+import '../../backup/presentation/backup_screen.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
 
@@ -133,6 +134,16 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const BackupScreen()),
+              );
+            },
+            icon: const Icon(Icons.backup_outlined, color: _primary),
+            tooltip: "Backup & restore",
+          ),
           IconButton(
             onPressed: () {
               Navigator.push(
