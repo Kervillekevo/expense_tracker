@@ -41,11 +41,14 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _restore() async {
-    final result = await FilePicker.platform.pickFiles(
+    // file_picker v12+: FilePicker.pickFiles() is a static method that
+    // returns a plain List<PlatformFile> directly (empty if canceled) —
+    // no more FilePicker.platform, no more nullable FilePickerResult.
+    final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['json'],
     );
-    if (result == null || result.files.single.path == null) return;
+    if (files.isEmpty || files.first.path == null) return;
 
     if (!mounted) return;
     final confirmed = await showDialog<bool>(
@@ -79,7 +82,7 @@ class _BackupScreenState extends State<BackupScreen> {
 
     setState(() => isRestoring = true);
     try {
-      final file = File(result.files.single.path!);
+      final file = File(files.first.path!);
       final counts = await _backupService.restoreFromFile(file);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
