@@ -153,7 +153,7 @@ class LoginScreenState extends State<LoginScreen> {
           child: Column(
             children: [
 
-              // Gradient header, matching the style used across the app
+
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(24, 40, 24, 56),
@@ -223,7 +223,7 @@ class LoginScreenState extends State<LoginScreen> {
                               color: Colors.white,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          const SizedBox(height: 6),
                           Text(
                             "Track every shilling, spend smarter",
                             style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.8)),
@@ -235,7 +235,7 @@ class LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              // Overlapping white sheet
+
               Transform.translate(
                 offset: const Offset(0, -28),
                 child: Container(
