@@ -4,7 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
 import 'features/auth/presentation/login_screen.dart';
 import 'features/home/presentation/home_screen.dart';
-import 'core/database/database_provider.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,9 +12,6 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Seeds default categories the first time the app runs.
-  // Safe to call on every launch — it no-ops once categories already exist.
-  await DatabaseProvider.db.categoryDao.seedDefaultCategories();
 
   runApp(const MyApp());
 }

@@ -3,6 +3,7 @@ import 'package:drift/drift.dart' show Value;
 import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/utils/category_icons.dart';
+import '../../auth/data/auth_service.dart';
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -17,6 +18,8 @@ class _CategoryScreenState extends State<CategoryScreen> {
   static const _fill = Color(0xFFF0F7F4);
   static const _border = Color(0xFFCDE7DB);
   static const _expenseColor = Color(0xFFC62828);
+
+  final AuthService _authService = AuthService();
 
   final formkey = GlobalKey<FormState>();
   final TextEditingController categoryNameController = TextEditingController();
@@ -51,6 +54,9 @@ class _CategoryScreenState extends State<CategoryScreen> {
   Future<void> _save() async {
     if (!formkey.currentState!.validate()) return;
 
+    final uid = _authService.getCurrentUser()?.uid;
+    if (uid == null) return;
+
     if (_editingCategory != null) {
       final updated = _editingCategory!.copyWith(
         name: categoryNameController.text.trim(),
@@ -64,6 +70,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
     } else {
       await DatabaseProvider.db.categoryDao.insertCategory(
         CategoriesCompanion.insert(
+          userId: Value(uid),
           name: categoryNameController.text.trim(),
           icon: selectedIconKey,
           color: selectedColorHex,
@@ -76,6 +83,9 @@ class _CategoryScreenState extends State<CategoryScreen> {
   }
 
   Future<void> _handleDelete(Category category) async {
+    final uid = _authService.getCurrentUser()?.uid;
+    if (uid == null) return;
+
     if (category.isDefault) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -112,7 +122,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
         false;
 
     if (confirmed) {
-      await DatabaseProvider.db.categoryDao.deleteCategory(category.id);
+      await DatabaseProvider.db.categoryDao.deleteCategory(category.id, uid);
       if (_editingCategory?.id == category.id) {
         _resetForm();
       }
@@ -147,6 +157,14 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final uid = _authService.getCurrentUser()?.uid;
+
+    if (uid == null) {
+      return const Scaffold(
+        body: Center(child: Text("Not signed in")),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -165,7 +183,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
       ),
       body: SafeArea(
         child: StreamBuilder<List<Category>>(
-          stream: DatabaseProvider.db.categoryDao.watchAllCategories(),
+          stream: DatabaseProvider.db.categoryDao.watchAllCategories(uid),
           builder: (context, snapshot) {
             final categories = snapshot.data ?? [];
             final expenseCategories =

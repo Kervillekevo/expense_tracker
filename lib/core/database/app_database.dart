@@ -19,15 +19,20 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (Migrator m) => m.createAll(),
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
-        // Added Categories.type (Expense/Income) in schema version 2.
         await m.addColumn(categories, categories.type);
+      }
+      if (from < 3) {
+        await m.addColumn(transactions, transactions.userId);
+      }
+      if (from < 4) {
+        await m.addColumn(categories, categories.userId);
       }
     },
   );

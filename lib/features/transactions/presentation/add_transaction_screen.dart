@@ -3,6 +3,7 @@ import 'package:drift/drift.dart' show Value;
 import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/utils/category_icons.dart';
+import '../../auth/data/auth_service.dart';
 
 class AddTransactionScreen extends StatefulWidget {
   const AddTransactionScreen({super.key, this.existingTransaction});
@@ -19,6 +20,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   static const _fill = Color(0xFFF0F7F4);
   static const _border = Color(0xFFCDE7DB);
   static const _expenseColor = Color(0xFFC62828);
+
+  final AuthService _authService = AuthService();
 
   final formkey = GlobalKey<FormState>();
   TextEditingController amountController = TextEditingController();
@@ -69,6 +72,10 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
   Future<void> save() async {
     if (!formkey.currentState!.validate()) return;
+
+    final currentUser = _authService.getCurrentUser();
+    if (currentUser == null) return;
+
     setState(() => isSaving = true);
     try {
       if (isEditing) {
@@ -85,6 +92,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         );
       } else {
         final entry = TransactionsCompanion.insert(
+          userId: Value(currentUser.uid),
           amount: double.parse(amountController.text.trim()),
           type: selectedType,
           category: selectedCategory,
@@ -141,6 +149,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   @override
   Widget build(BuildContext context) {
     final isExpense = selectedType == "Expense";
+    final uid = _authService.getCurrentUser()?.uid;
+
+    if (uid == null) {
+      return const Scaffold(
+        body: Center(child: Text("Not signed in")),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -264,13 +279,14 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 ),
                 const SizedBox(height: 8),
 
-                // Only shows categories matching the selected type — an
-                // Income transaction never sees expense categories and
-                // vice versa.
+                // Only shows categories matching the selected type AND
+                // belonging to the signed-in user — an Income transaction
+                // never sees expense categories, and one user never sees
+                // another user's categories, even on the same device.
                 StreamBuilder<List<Category>>(
                   key: ValueKey(selectedType),
                   stream: DatabaseProvider.db.categoryDao
-                      .watchCategoriesByType(selectedType),
+                      .watchCategoriesByType(uid, selectedType),
                   builder: (context, snapshot) {
                     if (!snapshot.hasData) {
                       return const Padding(

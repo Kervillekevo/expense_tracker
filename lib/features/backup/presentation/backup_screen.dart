@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import '../data/backup_service.dart';
+import '../../auth/data/auth_service.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -19,13 +20,17 @@ class _BackupScreenState extends State<BackupScreen> {
   static const _expenseColor = Color(0xFFC62828);
 
   final BackupService _backupService = BackupService();
+  final AuthService _authService = AuthService();
   bool isExporting = false;
   bool isRestoring = false;
 
   Future<void> _export() async {
+    final uid = _authService.getCurrentUser()?.uid;
+    if (uid == null) return;
+
     setState(() => isExporting = true);
     try {
-      final file = await _backupService.exportToFile();
+      final file = await _backupService.exportToFile(uid);
       await Share.shareXFiles(
         [XFile(file.path)],
         text: 'Expense Tracker backup',
@@ -41,6 +46,9 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _restore() async {
+    final uid = _authService.getCurrentUser()?.uid;
+    if (uid == null) return;
+
     // file_picker v12+: FilePicker.pickFiles() is a static method that
     // returns a plain List<PlatformFile> directly (empty if canceled) —
     // no more FilePicker.platform, no more nullable FilePickerResult.
@@ -83,7 +91,7 @@ class _BackupScreenState extends State<BackupScreen> {
     setState(() => isRestoring = true);
     try {
       final file = File(files.first.path!);
-      final counts = await _backupService.restoreFromFile(file);
+      final counts = await _backupService.restoreFromFile(file, uid);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

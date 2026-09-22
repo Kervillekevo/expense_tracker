@@ -8,9 +8,11 @@ part 'transaction_dao.g.dart';
 class TransactionDao extends DatabaseAccessor<AppDatabase> with _$TransactionDaoMixin {
   TransactionDao(super.db);
 
-  Future<List<Transaction>> getAllTransactions() => select(transactions).get();
+  Future<List<Transaction>> getAllTransactions(String userId) =>
+      (select(transactions)..where((t) => t.userId.equals(userId))).get();
 
-  Stream<List<Transaction>> watchAllTransactions() => select(transactions).watch();
+  Stream<List<Transaction>> watchAllTransactions(String userId) =>
+      (select(transactions)..where((t) => t.userId.equals(userId))).watch();
 
   Future<int> insertTransaction(TransactionsCompanion entry) =>
       into(transactions).insert(entry);
@@ -18,6 +20,8 @@ class TransactionDao extends DatabaseAccessor<AppDatabase> with _$TransactionDao
   Future<bool> updateTransaction(TransactionsCompanion entry) =>
       update(transactions).replace(entry);
 
-  Future<int> deleteTransaction(int id) =>
-      (delete(transactions)..where((t) => t.id.equals(id))).go();
+  Future<int> deleteTransaction(int id, String userId) =>
+      (delete(transactions)
+        ..where((t) => t.id.equals(id) & t.userId.equals(userId)))
+          .go();
 }

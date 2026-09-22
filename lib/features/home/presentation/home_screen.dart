@@ -37,6 +37,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   _Period selectedPeriod = _Period.month;
 
+  @override
+  void initState() {
+    super.initState();
+    final uid = _authService.getCurrentUser()?.uid;
+    if (uid != null) {
+      DatabaseProvider.db.categoryDao.seedDefaultCategories(uid);
+    }
+  }
+
   Future<void> logout() async {
     try {
       await _authService.logout();
@@ -135,20 +144,28 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = _authService.getCurrentUser()?.displayName;
+    final currentUser = _authService.getCurrentUser();
+    final uid = currentUser?.uid;
+    final displayName = currentUser?.displayName;
+
+    if (uid == null) {
+      return const Scaffold(
+        body: Center(child: Text("Not signed in")),
+      );
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: StreamBuilder<List<Category>>(
-          stream: DatabaseProvider.db.categoryDao.watchAllCategories(),
+          stream: DatabaseProvider.db.categoryDao.watchAllCategories(uid),
           builder: (context, categorySnapshot) {
             final categoryByName = {
               for (final c in categorySnapshot.data ?? <Category>[]) c.name: c,
             };
 
             return StreamBuilder<List<Transaction>>(
-              stream: DatabaseProvider.db.transactionDao.watchAllTransactions(),
+              stream: DatabaseProvider.db.transactionDao.watchAllTransactions(uid),
               builder: (context, snapshot) {
                 final allTransactions = snapshot.data ?? [];
                 final transactions = allTransactions
@@ -587,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                                 confirmDismiss: (_) => _confirmDelete(tx),
                                 onDismissed: (_) {
-                                  DatabaseProvider.db.transactionDao.deleteTransaction(tx.id);
+                                  DatabaseProvider.db.transactionDao.deleteTransaction(tx.id, uid);
                                 },
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(14),

@@ -6,11 +6,10 @@ import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
 
 class BackupService {
-  /// Writes all transactions and categories to a JSON file in the app's
-  /// temporary folder and returns it, ready to hand off to the share sheet.
-  Future<File> exportToFile() async {
-    final categories = await DatabaseProvider.db.categoryDao.getAllCategories();
-    final transactions = await DatabaseProvider.db.transactionDao.getAllTransactions();
+  /// Writes this user's transactions and categories to a JSON file.
+  Future<File> exportToFile(String userId) async {
+    final categories = await DatabaseProvider.db.categoryDao.getAllCategories(userId);
+    final transactions = await DatabaseProvider.db.transactionDao.getAllTransactions(userId);
 
     final data = {
       'exportedAt': DateTime.now().toIso8601String(),
@@ -34,7 +33,6 @@ class BackupService {
     };
 
     final jsonString = const JsonEncoder.withIndent('  ').convert(data);
-
     final tempDir = await getTemporaryDirectory();
     final timestamp =
         DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
@@ -44,13 +42,10 @@ class BackupService {
     return file;
   }
 
-  /// Reads a previously exported JSON file and inserts its contents back
-  /// into the local database. Categories that already exist (matched by
-  /// name + type) are skipped to avoid duplicates; transactions are always
-  /// added as new rows, since there's no unique key to detect duplicates
-  /// against.
+  /// Restores a previously exported file into this user's account only.
   Future<({int categoriesAdded, int transactionsAdded})> restoreFromFile(
       File file,
+      String userId,
       ) async {
     final contents = await file.readAsString();
     final data = jsonDecode(contents) as Map<String, dynamic>;
@@ -58,7 +53,7 @@ class BackupService {
     final categoriesJson = (data['categories'] as List<dynamic>?) ?? [];
     final transactionsJson = (data['transactions'] as List<dynamic>?) ?? [];
 
-    final existingCategories = await DatabaseProvider.db.categoryDao.getAllCategories();
+    final existingCategories = await DatabaseProvider.db.categoryDao.getAllCategories(userId);
     final existingKeys = existingCategories.map((c) => '${c.name}|${c.type}').toSet();
 
     int categoriesAdded = 0;
@@ -70,6 +65,7 @@ class BackupService {
 
       await DatabaseProvider.db.categoryDao.insertCategory(
         CategoriesCompanion.insert(
+          userId: Value(userId),
           name: name,
           icon: item['icon'] as String,
           color: item['color'] as String,
@@ -85,6 +81,7 @@ class BackupService {
     for (final item in transactionsJson) {
       await DatabaseProvider.db.transactionDao.insertTransaction(
         TransactionsCompanion.insert(
+          userId: Value(userId),
           amount: (item['amount'] as num).toDouble(),
           type: item['type'] as String,
           category: item['category'] as String,
