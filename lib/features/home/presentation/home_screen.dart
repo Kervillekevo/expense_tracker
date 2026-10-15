@@ -7,6 +7,7 @@ import '../../categories/presentation/category_screen.dart';
 import '../../backup/presentation/backup_screen.dart';
 import '../../../core/database/database_provider.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/category_icons.dart';
 
 enum _Period { today, week, month, all }
@@ -21,13 +22,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final AuthService _authService = AuthService();
 
-  static const _primary = Color(0xFF2E7D5B);
-  static const _primaryDark = Color(0xFF0D3B2E);
-  static const _fill = Color(0xFFF0F7F4);
-  static const _border = Color(0xFFCDE7DB);
-  static const _expenseColor = Color(0xFFC62828);
-  static const _incomeColor = Color(0xFF2E7D5B);
-
   static const Map<_Period, String> _periodLabels = {
     _Period.today: "Today",
     _Period.week: "Week",
@@ -35,7 +29,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _Period.all: "All",
   };
 
+  static const _months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
   _Period selectedPeriod = _Period.month;
+  bool hideBalance = false;
 
   @override
   void initState() {
@@ -101,6 +102,116 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${isNegative ? '-' : ''}$buffer.${parts[1]}';
   }
 
+  String _dayLabel(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(date.year, date.month, date.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return "Today";
+    if (diff == 1) return "Yesterday";
+    return "${_days[date.weekday - 1]}, ${date.day} ${_months[date.month - 1]}";
+  }
+
+  String _trendLabel() {
+    switch (selectedPeriod) {
+      case _Period.today:
+        return "Last 7 days";
+      case _Period.week:
+        return "This week";
+      case _Period.month:
+        return "This month";
+      case _Period.all:
+        return "By month";
+    }
+  }
+
+  double _sumRange(List<Transaction> all, String type, DateTime start, DateTime end) {
+    double total = 0;
+    for (final tx in all) {
+      if (tx.type != type) continue;
+      if (!tx.date.isBefore(start) && tx.date.isBefore(end)) total += tx.amount;
+    }
+    return total;
+  }
+
+  // points for the little chart, depends on the selected period
+  List<double> _trend(List<Transaction> all, String type) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (selectedPeriod == _Period.all) {
+      var first = DateTime(now.year, now.month);
+      for (final tx in all) {
+        final m = DateTime(tx.date.year, tx.date.month);
+        if (m.isBefore(first)) first = m;
+      }
+      var start = DateTime(now.year, now.month - 11);
+      if (first.isAfter(start)) start = first;
+      if (start.year == now.year && start.month == now.month) {
+        start = DateTime(now.year, now.month - 1);
+      }
+      final points = <double>[];
+      for (var m = start; !m.isAfter(DateTime(now.year, now.month)); m = DateTime(m.year, m.month + 1)) {
+        points.add(_sumRange(all, type, m, DateTime(m.year, m.month + 1)));
+      }
+      return points;
+    }
+
+    late DateTime start;
+    switch (selectedPeriod) {
+      case _Period.today:
+        start = DateTime(today.year, today.month, today.day - 6);
+        break;
+      case _Period.week:
+        start = DateTime(today.year, today.month, today.day - (now.weekday - 1));
+        break;
+      default:
+        start = DateTime(today.year, today.month, 1);
+    }
+    // a line needs at least two points
+    if (!start.isBefore(today)) {
+      start = DateTime(today.year, today.month, today.day - 1);
+    }
+
+    final points = <double>[];
+    for (var d = start; !d.isAfter(today); d = DateTime(d.year, d.month, d.day + 1)) {
+      points.add(_sumRange(all, type, d, DateTime(d.year, d.month, d.day + 1)));
+    }
+    return points;
+  }
+
+  // % change against the previous day / week / month
+  double? _change(List<Transaction> all, String type) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    late DateTime curStart, curEnd, prevStart;
+
+    switch (selectedPeriod) {
+      case _Period.today:
+        curStart = today;
+        curEnd = DateTime(today.year, today.month, today.day + 1);
+        prevStart = DateTime(today.year, today.month, today.day - 1);
+        break;
+      case _Period.week:
+        curStart = DateTime(today.year, today.month, today.day - (now.weekday - 1));
+        curEnd = DateTime(curStart.year, curStart.month, curStart.day + 7);
+        prevStart = DateTime(curStart.year, curStart.month, curStart.day - 7);
+        break;
+      case _Period.month:
+        curStart = DateTime(now.year, now.month, 1);
+        curEnd = DateTime(now.year, now.month + 1, 1);
+        prevStart = DateTime(now.year, now.month - 1, 1);
+        break;
+      case _Period.all:
+        return null;
+    }
+
+    final current = _sumRange(all, type, curStart, curEnd);
+    final previous = _sumRange(all, type, prevStart, curStart);
+    if (previous == 0) return null;
+    return (current - previous) / previous * 100;
+  }
+
   IconData _iconForTx(String categoryName, Map<String, Category> byName) {
     final category = byName[categoryName];
     if (category == null) return Icons.receipt_long_outlined;
@@ -120,6 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
     return await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.sheet,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Delete transaction?"),
         content: Text(
           "This will permanently delete '${tx.category}' (${_formatAmount(tx.amount)}).",
@@ -127,13 +240,13 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text("Cancel"),
+            child: const Text("Cancel", style: TextStyle(color: AppColors.muted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text(
               "Delete",
-              style: TextStyle(color: _expenseColor, fontWeight: FontWeight.bold),
+              style: TextStyle(color: AppColors.expense, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -155,8 +268,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.dark,
       body: SafeArea(
+        bottom: false,
         child: StreamBuilder<List<Category>>(
           stream: DatabaseProvider.db.categoryDao.watchAllCategories(uid),
           builder: (context, categorySnapshot) {
@@ -186,291 +300,139 @@ class _HomeScreenState extends State<HomeScreen> {
                 }
                 final balance = totalIncome - totalExpense;
 
+                // flatten into day headers + transactions for one lazy list
+                final List<Object> rows = [];
+                DateTime? lastDay;
+                for (final tx in transactions) {
+                  final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+                  if (lastDay == null || day != lastDay) {
+                    rows.add(day);
+                    lastDay = day;
+                  }
+                  rows.add(tx);
+                }
+
                 return CustomScrollView(
                   slivers: [
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                        padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-
+                            _buildTopBar(displayName),
+                            const SizedBox(height: 26),
+                            Text(
+                              "Balance · ${_periodLabels[selectedPeriod]}",
+                              style: const TextStyle(color: Colors.white60, fontSize: 13),
+                            ),
+                            const SizedBox(height: 6),
                             Row(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        "${_greeting()} \u{1F44B}",
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey.shade500,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        displayName != null && displayName.isNotEmpty
-                                            ? displayName
-                                            : "Welcome back",
-                                        style: const TextStyle(
-                                          fontSize: 19,
-                                          fontWeight: FontWeight.bold,
-                                          color: _primaryDark,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
+                                const Padding(
+                                  padding: EdgeInsets.only(bottom: 6, right: 8),
+                                  child: Text(
+                                    "KES",
+                                    style: TextStyle(
+                                      color: AppColors.accent,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                                PopupMenuButton<String>(
-                                  icon: Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: _fill,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: _border),
-                                    ),
-                                    child: const Icon(
-                                      Icons.more_vert,
-                                      color: _primaryDark,
-                                      size: 20,
+                                Expanded(
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      hideBalance ? "••••••" : _formatAmount(balance),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 38,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: -0.5,
+                                      ),
                                     ),
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14),
+                                ),
+                                IconButton(
+                                  onPressed: () => setState(() => hideBalance = !hideBalance),
+                                  icon: Icon(
+                                    hideBalance
+                                        ? Icons.visibility_outlined
+                                        : Icons.visibility_off_outlined,
+                                    color: Colors.white54,
+                                    size: 20,
                                   ),
-                                  onSelected: (value) {
-                                    switch (value) {
-                                      case 'categories':
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => const CategoryScreen(),
-                                          ),
-                                        );
-                                        break;
-                                      case 'backup':
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) => const BackupScreen(),
-                                          ),
-                                        );
-                                        break;
-                                      case 'logout':
-                                        logout();
-                                        break;
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    const PopupMenuItem(
-                                      value: 'categories',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.category_outlined, size: 18, color: _primary),
-                                          SizedBox(width: 10),
-                                          Text("Manage categories"),
-                                        ],
-                                      ),
-                                    ),
-                                    const PopupMenuItem(
-                                      value: 'backup',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.backup_outlined, size: 18, color: _primary),
-                                          SizedBox(width: 10),
-                                          Text("Backup & restore"),
-                                        ],
-                                      ),
-                                    ),
-                                    const PopupMenuDivider(),
-                                    const PopupMenuItem(
-                                      value: 'logout',
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.logout, size: 18, color: _expenseColor),
-                                          SizedBox(width: 10),
-                                          Text("Log out", style: TextStyle(color: _expenseColor)),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
                                 ),
                               ],
                             ),
-
                             const SizedBox(height: 20),
-
-                            Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [_primary, _primaryDark],
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _primary.withValues(alpha: 0.28),
-                                    blurRadius: 20,
-                                    offset: const Offset(0, 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _TrendCard(
+                                    label: "Income",
+                                    subLabel: _trendLabel(),
+                                    amount: hideBalance ? "••••" : _formatAmount(totalIncome),
+                                    icon: Icons.arrow_downward_rounded,
+                                    background: AppColors.accent,
+                                    lineColor: const Color(0xFF1B8F6A),
+                                    values: _trend(allTransactions, "Income"),
+                                    changePct: _change(allTransactions, "Income"),
+                                    upIsGood: true,
                                   ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(20),
-                                child: Stack(
-                                  children: [
-                                    Positioned(
-                                      right: -30,
-                                      top: -30,
-                                      child: Container(
-                                        width: 130,
-                                        height: 130,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Colors.white.withValues(alpha: 0.06),
-                                        ),
-                                      ),
-                                    ),
-                                    Positioned(
-                                      right: 30,
-                                      bottom: -60,
-                                      child: Container(
-                                        width: 110,
-                                        height: 110,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Colors.white.withValues(alpha: 0.05),
-                                        ),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(22),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(8),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white.withValues(alpha: 0.15),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                                child: const Icon(
-                                                  Icons.account_balance_wallet_outlined,
-                                                  color: Colors.white,
-                                                  size: 18,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Text(
-                                                "Balance \u00b7 ${_periodLabels[selectedPeriod]}",
-                                                style: const TextStyle(
-                                                  color: Colors.white70,
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Text(
-                                            "KES ${_formatAmount(balance)}",
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 30,
-                                              fontWeight: FontWeight.bold,
-                                              letterSpacing: -0.5,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 20),
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: _SummaryPill(
-                                                  icon: Icons.arrow_downward_rounded,
-                                                  label: "Income",
-                                                  amount: _formatAmount(totalIncome),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 12),
-                                              Expanded(
-                                                child: _SummaryPill(
-                                                  icon: Icons.arrow_upward_rounded,
-                                                  label: "Expenses",
-                                                  amount: _formatAmount(totalExpense),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
                                 ),
-                              ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _TrendCard(
+                                    label: "Spendings",
+                                    subLabel: _trendLabel(),
+                                    amount: hideBalance ? "••••" : _formatAmount(totalExpense),
+                                    icon: Icons.arrow_upward_rounded,
+                                    background: AppColors.sheet,
+                                    lineColor: const Color(0xFFE5573E),
+                                    values: _trend(allTransactions, "Expense"),
+                                    changePct: _change(allTransactions, "Expense"),
+                                    upIsGood: false,
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 22),
+                          ],
+                        ),
+                      ),
+                    ),
 
-                            const SizedBox(height: 16),
-
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: _fill,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: _border),
-                              ),
-                              child: Row(
-                                children: _Period.values.map((period) {
-                                  final selected = selectedPeriod == period;
-                                  return Expanded(
-                                    child: GestureDetector(
-                                      onTap: () => setState(() => selectedPeriod = period),
-                                      child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 180),
-                                        padding: const EdgeInsets.symmetric(vertical: 9),
-                                        decoration: BoxDecoration(
-                                          color: selected ? _primary : Colors.transparent,
-                                          borderRadius: BorderRadius.circular(11),
-                                        ),
-                                        child: Text(
-                                          _periodLabels[period]!,
-                                          textAlign: TextAlign.center,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: selected ? Colors.white : Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                }).toList(),
-                              ),
+                    SliverToBoxAdapter(
+                      child: Container(
+                        padding: const EdgeInsets.fromLTRB(20, 22, 20, 0),
+                        decoration: const BoxDecoration(
+                          color: AppColors.sheet,
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            PillToggle(
+                              options: _periodLabels.values.toList(),
+                              selected: _periodLabels[selectedPeriod]!,
+                              onChanged: (label) => setState(() {
+                                selectedPeriod = _periodLabels.entries
+                                    .firstWhere((e) => e.value == label)
+                                    .key;
+                              }),
                             ),
-
-                            const SizedBox(height: 20),
-
+                            const SizedBox(height: 18),
                             if (expenseByCategory.isNotEmpty)
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(18),
                                 decoration: BoxDecoration(
-                                  color: _fill,
-                                  borderRadius: BorderRadius.circular(18),
-                                  border: Border.all(color: _border),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.03),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(22),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -480,7 +442,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       style: TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.bold,
-                                        color: _primaryDark,
+                                        color: AppColors.dark,
                                       ),
                                     ),
                                     const SizedBox(height: 16),
@@ -493,211 +455,79 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ],
                                 ),
                               ),
-
-                            const SizedBox(height: 24),
-
+                            const SizedBox(height: 22),
                             const Text(
                               "Transactions",
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.bold,
-                                color: _primaryDark,
+                                color: AppColors.dark,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              "Tap to edit \u00b7 swipe to delete",
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey.shade500,
-                              ),
+                            const SizedBox(height: 2),
+                            const Text(
+                              "Tap to edit · swipe to delete",
+                              style: TextStyle(fontSize: 11, color: AppColors.muted),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 6),
                           ],
                         ),
                       ),
                     ),
 
                     if (!snapshot.hasData)
-                      const SliverToBoxAdapter(
-                        child: Padding(
+                      _fillSheet(
+                        const Padding(
                           padding: EdgeInsets.only(top: 40),
                           child: Center(
-                            child: CircularProgressIndicator(color: _primary),
+                            child: CircularProgressIndicator(color: AppColors.primary),
                           ),
                         ),
                       )
                     else if (allTransactions.isEmpty)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-                          child: Column(
-                            children: [
-                              Icon(
-                                Icons.receipt_long_outlined,
-                                size: 48,
-                                color: Colors.grey.shade300,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                "No transactions yet",
-                                style: TextStyle(
-                                  color: Colors.grey.shade500,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                "Tap + to add your first one",
-                                style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
+                      _fillSheet(_emptyState(
+                        Icons.receipt_long_outlined,
+                        "No transactions yet",
+                        "Tap + to add your first one",
+                      ))
                     else if (transactions.isEmpty)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.event_busy_outlined,
-                                  size: 44,
-                                  color: Colors.grey.shade300,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  "No transactions this ${_periodLabels[selectedPeriod]!.toLowerCase()}",
-                                  style: TextStyle(
-                                    color: Colors.grey.shade500,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        )
-                      else
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
-                          sliver: SliverList.separated(
-                            itemCount: transactions.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        _fillSheet(_emptyState(
+                          Icons.event_busy_outlined,
+                          "No transactions this ${_periodLabels[selectedPeriod]!.toLowerCase()}",
+                          null,
+                        ))
+                      else ...[
+                          SliverList.builder(
+                            itemCount: rows.length,
                             itemBuilder: (context, index) {
-                              final tx = transactions[index];
-                              final isExpense = tx.type == "Expense";
-                              final amountColor = isExpense ? _expenseColor : _incomeColor;
-                              final categoryColor = _colorForTx(tx.category, categoryByName);
-
-                              return Dismissible(
-                                key: ValueKey(tx.id),
-                                direction: DismissDirection.endToStart,
-                                background: Container(
-                                  alignment: Alignment.centerRight,
-                                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                                  decoration: BoxDecoration(
-                                    color: _expenseColor,
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: const Icon(Icons.delete_outline, color: Colors.white),
-                                ),
-                                confirmDismiss: (_) => _confirmDelete(tx),
-                                onDismissed: (_) {
-                                  DatabaseProvider.db.transactionDao.deleteTransaction(tx.id, uid);
-                                },
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(14),
-                                  onTap: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            AddTransactionScreen(existingTransaction: tx),
-                                      ),
-                                    );
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(14),
-                                    decoration: BoxDecoration(
-                                      color: _fill,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: _border),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.02),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color: categoryColor.withValues(alpha: 0.14),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            _iconForTx(tx.category, categoryByName),
-                                            color: categoryColor,
-                                            size: 20,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                tx.category,
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 14,
-                                                  color: _primaryDark,
-                                                ),
-                                              ),
-                                              if (tx.note != null && tx.note!.isNotEmpty) ...[
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  tx.note!,
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey.shade600,
-                                                  ),
-                                                ),
-                                              ],
-                                              const SizedBox(height: 2),
-                                              Text(
-                                                "${tx.date.day}/${tx.date.month}/${tx.date.year}",
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: Colors.grey.shade500,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          "${isExpense ? '-' : '+'}${_formatAmount(tx.amount)}",
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: amountColor,
-                                          ),
-                                        ),
-                                      ],
+                              final row = rows[index];
+                              if (row is DateTime) {
+                                return Container(
+                                  color: AppColors.sheet,
+                                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
+                                  child: Text(
+                                    _dayLabel(row),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.muted,
                                     ),
                                   ),
+                                );
+                              }
+                              return Container(
+                                color: AppColors.sheet,
+                                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                                child: _buildTransactionTile(
+                                  row as Transaction,
+                                  uid,
+                                  categoryByName,
                                 ),
                               );
                             },
                           ),
-                        ),
+                          _fillSheet(const SizedBox(height: 90)),
+                        ],
                   ],
                 );
               },
@@ -712,57 +542,453 @@ class _HomeScreenState extends State<HomeScreen> {
             MaterialPageRoute(builder: (_) => const AddTransactionScreen()),
           );
         },
-        backgroundColor: _primary,
+        backgroundColor: AppColors.accent,
+        foregroundColor: AppColors.dark,
         elevation: 3,
-        child: const Icon(Icons.add, color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: const Icon(Icons.add, size: 28),
+      ),
+    );
+  }
+
+  Widget _fillSheet(Widget child) {
+    return SliverFillRemaining(
+      hasScrollBody: false,
+      child: Container(color: AppColors.sheet, child: child),
+    );
+  }
+
+  Widget _emptyState(IconData icon, String title, String? hint) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
+      child: Column(
+        children: [
+          Icon(icon, size: 46, color: AppColors.border),
+          const SizedBox(height: 12),
+          Text(
+            title,
+            style: const TextStyle(color: AppColors.muted, fontWeight: FontWeight.w600),
+          ),
+          if (hint != null) ...[
+            const SizedBox(height: 4),
+            Text(hint, style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopBar(String? displayName) {
+    final name = displayName != null && displayName.isNotEmpty ? displayName : "Welcome back";
+    final initial = name.characters.first.toUpperCase();
+
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: AppColors.accent,
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            initial,
+            style: const TextStyle(
+              color: AppColors.dark,
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "${_greeting()} \u{1F44B}",
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                name,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+        PopupMenuButton<String>(
+          icon: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.more_horiz, color: Colors.white, size: 20),
+          ),
+          color: AppColors.sheet,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          onSelected: (value) {
+            switch (value) {
+              case 'categories':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const CategoryScreen()),
+                );
+                break;
+              case 'backup':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const BackupScreen()),
+                );
+                break;
+              case 'logout':
+                logout();
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 'categories',
+              child: Row(
+                children: [
+                  Icon(Icons.category_outlined, size: 18, color: AppColors.primary),
+                  SizedBox(width: 10),
+                  Text("Manage categories"),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'backup',
+              child: Row(
+                children: [
+                  Icon(Icons.backup_outlined, size: 18, color: AppColors.primary),
+                  SizedBox(width: 10),
+                  Text("Backup & restore"),
+                ],
+              ),
+            ),
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'logout',
+              child: Row(
+                children: [
+                  Icon(Icons.logout, size: 18, color: AppColors.expense),
+                  SizedBox(width: 10),
+                  Text("Log out", style: TextStyle(color: AppColors.expense)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTransactionTile(
+      Transaction tx,
+      String uid,
+      Map<String, Category> categoryByName,
+      ) {
+    final isExpense = tx.type == "Expense";
+    final amountColor = isExpense ? AppColors.expense : AppColors.income;
+    final categoryColor = _colorForTx(tx.category, categoryByName);
+
+    return Dismissible(
+      key: ValueKey(tx.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: AppColors.expense,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Icon(Icons.delete_outline, color: Colors.white),
+      ),
+      confirmDismiss: (_) => _confirmDelete(tx),
+      onDismissed: (_) {
+        DatabaseProvider.db.transactionDao.deleteTransaction(tx.id, uid);
+      },
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AddTransactionScreen(existingTransaction: tx),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: categoryColor.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    _iconForTx(tx.category, categoryByName),
+                    color: categoryColor,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tx.category,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          color: AppColors.dark,
+                        ),
+                      ),
+                      if (tx.note != null && tx.note!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          tx.note!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  "${isExpense ? '-' : '+'}${_formatAmount(tx.amount)}",
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: amountColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
 }
 
-class _SummaryPill extends StatelessWidget {
-  const _SummaryPill({
-    required this.icon,
+class _TrendCard extends StatelessWidget {
+  const _TrendCard({
     required this.label,
+    required this.subLabel,
     required this.amount,
+    required this.icon,
+    required this.background,
+    required this.lineColor,
+    required this.values,
+    required this.changePct,
+    required this.upIsGood,
   });
 
-  final IconData icon;
   final String label;
+  final String subLabel;
   final String amount;
+  final IconData icon;
+  final Color background;
+  final Color lineColor;
+  final List<double> values;
+  final double? changePct;
+  final bool upIsGood;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
+        color: background,
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(icon, color: Colors.white70, size: 14),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: const TextStyle(color: Colors.white70, fontSize: 11),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: AppColors.dark,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: background, size: 14),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: AppColors.dark,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      subLabel,
+                      style: TextStyle(
+                        color: AppColors.dark.withValues(alpha: 0.55),
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 14),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              amount,
+              style: const TextStyle(
+                color: AppColors.dark,
+                fontWeight: FontWeight.bold,
+                fontSize: 19,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 20,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: changePct == null ? null : _ChangeBadge(pct: changePct!, upIsGood: upIsGood),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 62,
+            child: _Sparkline(values: values, color: lineColor),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChangeBadge extends StatelessWidget {
+  const _ChangeBadge({required this.pct, required this.upIsGood});
+
+  final double pct;
+  final bool upIsGood;
+
+  @override
+  Widget build(BuildContext context) {
+    final isUp = pct >= 0;
+    final isGood = upIsGood ? isUp : !isUp;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isGood ? const Color(0xFF1B8F5A) : AppColors.expense,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isUp ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+            color: Colors.white,
+            size: 10,
+          ),
+          const SizedBox(width: 2),
           Text(
-            amount,
+            "${pct.abs().toStringAsFixed(1)}%",
             style: const TextStyle(
               color: Colors.white,
+              fontSize: 10,
               fontWeight: FontWeight.bold,
-              fontSize: 14,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _Sparkline extends StatelessWidget {
+  const _Sparkline({required this.values, required this.color});
+
+  final List<double> values;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final maxValue = values.fold<double>(0, (a, b) => a > b ? a : b);
+    final top = maxValue == 0 ? 1.0 : maxValue * 1.25;
+    final average =
+    values.isEmpty ? 0.0 : values.reduce((a, b) => a + b) / values.length;
+
+    return LineChart(
+      LineChartData(
+        minX: 0,
+        maxX: (values.length - 1).toDouble(),
+        minY: 0,
+        maxY: top,
+        gridData: const FlGridData(show: false),
+        titlesData: const FlTitlesData(show: false),
+        borderData: FlBorderData(show: false),
+        lineTouchData: const LineTouchData(enabled: false),
+        extraLinesData: ExtraLinesData(
+          horizontalLines: [
+            HorizontalLine(
+              y: average,
+              color: color.withValues(alpha: 0.5),
+              strokeWidth: 1,
+              dashArray: [4, 4],
+            ),
+          ],
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: [
+              for (int i = 0; i < values.length; i++) FlSpot(i.toDouble(), values[i]),
+            ],
+            isCurved: true,
+            curveSmoothness: 0.25,
+            preventCurveOverShooting: true,
+            color: color,
+            barWidth: 2,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  color.withValues(alpha: 0.35),
+                  color.withValues(alpha: 0.03),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      duration: const Duration(milliseconds: 300),
     );
   }
 }
@@ -788,8 +1014,8 @@ class _CategoryDonutChart extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         SizedBox(
-          width: 110,
-          height: 110,
+          width: 120,
+          height: 120,
           child: Stack(
             alignment: Alignment.center,
             children: [
@@ -799,31 +1025,37 @@ class _CategoryDonutChart extends StatelessWidget {
                     return PieChartSectionData(
                       value: e.value,
                       color: colorForCategory(e.key),
-                      radius: 18,
+                      radius: 16,
                       showTitle: false,
                     );
                   }).toList(),
-                  sectionsSpace: 2,
-                  centerSpaceRadius: 36,
+                  sectionsSpace: 3,
+                  centerSpaceRadius: 42,
                 ),
                 duration: const Duration(milliseconds: 400),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    formatAmount(total),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                      color: Color(0xFF0D3B2E),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        formatAmount(total),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                          color: AppColors.dark,
+                        ),
+                      ),
                     ),
-                  ),
-                  Text(
-                    "spent",
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                  ),
-                ],
+                    const Text(
+                      "spent",
+                      style: TextStyle(fontSize: 10, color: AppColors.muted),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -839,8 +1071,8 @@ class _CategoryDonutChart extends StatelessWidget {
                 child: Row(
                   children: [
                     Container(
-                      width: 9,
-                      height: 9,
+                      width: 10,
+                      height: 10,
                       decoration: BoxDecoration(
                         color: colorForCategory(e.key),
                         shape: BoxShape.circle,
@@ -854,13 +1086,13 @@ class _CategoryDonutChart extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF0D3B2E),
+                          color: AppColors.dark,
                         ),
                       ),
                     ),
                     Text(
                       "${pct.toStringAsFixed(0)}%",
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                      style: const TextStyle(fontSize: 12, color: AppColors.muted),
                     ),
                   ],
                 ),

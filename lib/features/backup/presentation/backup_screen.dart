@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import '../data/backup_service.dart';
 import '../../auth/data/auth_service.dart';
+import '../../../core/theme/app_theme.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -13,12 +14,6 @@ class BackupScreen extends StatefulWidget {
 }
 
 class _BackupScreenState extends State<BackupScreen> {
-  static const _primary = Color(0xFF2E7D5B);
-  static const _primaryDark = Color(0xFF0D3B2E);
-  static const _fill = Color(0xFFF0F7F4);
-  static const _border = Color(0xFFCDE7DB);
-  static const _expenseColor = Color(0xFFC62828);
-
   final BackupService _backupService = BackupService();
   final AuthService _authService = AuthService();
   bool isExporting = false;
@@ -38,7 +33,7 @@ class _BackupScreenState extends State<BackupScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Export failed: $e"), backgroundColor: _expenseColor),
+          SnackBar(content: Text("Export failed: $e"), backgroundColor: AppColors.expense),
         );
       }
     }
@@ -62,6 +57,8 @@ class _BackupScreenState extends State<BackupScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Restore backup?"),
         content: const Text(
           "This adds all transactions and categories from the backup "
@@ -72,13 +69,13 @@ class _BackupScreenState extends State<BackupScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text("Cancel"),
+            child: const Text("Cancel", style: TextStyle(color: AppColors.muted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text(
               "Restore",
-              style: TextStyle(color: _primary, fontWeight: FontWeight.bold),
+              style: TextStyle(color: AppColors.dark, fontWeight: FontWeight.bold),
             ),
           ),
         ],
@@ -99,14 +96,14 @@ class _BackupScreenState extends State<BackupScreen> {
               "Restored ${counts.transactionsAdded} transactions and "
                   "${counts.categoriesAdded} categories.",
             ),
-            backgroundColor: _primary,
+            backgroundColor: AppColors.primary,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Restore failed: $e"), backgroundColor: _expenseColor),
+          SnackBar(content: Text("Restore failed: $e"), backgroundColor: AppColors.expense),
         );
       }
     }
@@ -116,121 +113,297 @@ class _BackupScreenState extends State<BackupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.dark,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.dark,
         elevation: 0,
         scrolledUnderElevation: 0,
-        iconTheme: const IconThemeData(color: _primaryDark),
+        iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           "Backup & Restore",
-          style: TextStyle(color: _primaryDark, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _fill,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: _border),
+      body: Column(
+        children: [
+          const _Hero(),
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: AppColors.sheet,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  28,
+                  20,
+                  MediaQuery.of(context).padding.bottom + 24,
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.info_outline, color: _primary, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        "Your data lives only on this device. Export a "
-                            "backup regularly so you don't lose it if something "
-                            "happens to your phone.",
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                      ),
+                    const _SectionLabel("SAVE A COPY"),
+                    const SizedBox(height: 10),
+                    _ActionTile(
+                      dark: true,
+                      icon: Icons.cloud_upload_outlined,
+                      title: "Export backup",
+                      description: isExporting
+                          ? "Preparing your file..."
+                          : "Save everything to a file you can share, email or keep in the cloud.",
+                      busy: isExporting,
+                      onTap: _export,
+                    ),
+                    const SizedBox(height: 26),
+                    const _SectionLabel("BRING DATA BACK"),
+                    const SizedBox(height: 10),
+                    _ActionTile(
+                      dark: false,
+                      icon: Icons.settings_backup_restore_rounded,
+                      title: "Restore from file",
+                      description: isRestoring
+                          ? "Restoring your data..."
+                          : "Pick a backup .json file and add its data back into the app.",
+                      busy: isRestoring,
+                      onTap: _restore,
+                    ),
+                    const SizedBox(height: 30),
+                    const _SectionLabel("GOOD TO KNOW"),
+                    const SizedBox(height: 14),
+                    const _Tip(
+                      icon: Icons.phone_android_rounded,
+                      text: "Your data is stored only on this phone, so a lost or reset device means lost data.",
+                    ),
+                    const _Tip(
+                      icon: Icons.add_circle_outline_rounded,
+                      text: "Restoring adds to what you already have. Nothing gets overwritten.",
+                    ),
+                    const _Tip(
+                      icon: Icons.category_outlined,
+                      text: "Categories with the same name won't be duplicated.",
+                    ),
+                    const _Tip(
+                      icon: Icons.event_repeat_rounded,
+                      text: "Export a fresh backup every week or two to stay covered.",
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 28),
-
-              const Text(
-                "Export backup",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _primaryDark),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                "Saves all your transactions and categories to a file you "
-                    "can share, email, or save to cloud storage.",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: isExporting ? null : _export,
-                  icon: isExporting
-                      ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                      : const Icon(Icons.upload_file_outlined),
-                  label: Text(isExporting ? "Preparing..." : "Export backup"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _primary,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 32),
-              Divider(color: Colors.grey.shade200),
-              const SizedBox(height: 24),
-
-              const Text(
-                "Restore backup",
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: _primaryDark),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                "Pick a previously exported .json file to add its data "
-                    "back into the app.",
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: OutlinedButton.icon(
-                  onPressed: isRestoring ? null : _restore,
-                  icon: isRestoring
-                      ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(color: _primary, strokeWidth: 2),
-                  )
-                      : const Icon(Icons.download_outlined, color: _primary),
-                  label: Text(
-                    isRestoring ? "Restoring..." : "Restore from file",
-                    style: const TextStyle(color: _primary),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: _primary),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Hero extends StatelessWidget {
+  const _Hero();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 6, 22, 28),
+      child: Row(
+        children: [
+          Container(
+            width: 62,
+            height: 62,
+            decoration: BoxDecoration(
+              color: AppColors.accent,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(Icons.shield_outlined, color: AppColors.dark, size: 30),
+          ),
+          const SizedBox(width: 16),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Keep your data safe",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  "Back up your transactions and categories in a single file.",
+                  style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1.1,
+        color: AppColors.muted,
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  const _ActionTile({
+    required this.dark,
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final bool dark;
+  final IconData icon;
+  final String title;
+  final String description;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final titleColor = dark ? Colors.white : AppColors.dark;
+    final bodyColor = dark ? Colors.white70 : AppColors.muted;
+    final iconBox = dark ? AppColors.accent : AppColors.sheet;
+    final iconColor = dark ? AppColors.dark : AppColors.primary;
+
+    return Material(
+      color: dark ? AppColors.dark : Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: busy ? null : onTap,
+        child: Stack(
+          children: [
+            if (dark)
+              Positioned(
+                right: -30,
+                top: -30,
+                child: Container(
+                  width: 110,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.06),
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  Container(
+                    width: 54,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      color: iconBox,
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: Icon(icon, color: iconColor, size: 26),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: titleColor,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          description,
+                          style: TextStyle(fontSize: 12, height: 1.4, color: bodyColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  busy
+                      ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: dark ? AppColors.accent : AppColors.primary,
+                    ),
+                  )
+                      : Icon(
+                    Icons.arrow_forward_rounded,
+                    color: dark ? AppColors.accent : AppColors.muted,
+                    size: 22,
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _Tip extends StatelessWidget {
+  const _Tip({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(icon, size: 18, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: AppColors.dark,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
