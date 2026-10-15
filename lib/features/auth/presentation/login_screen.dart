@@ -1,7 +1,7 @@
-import 'package:expense_tracker/features/auth/presentation/register_screen.dart';
 import 'package:flutter/material.dart';
 import '../data/auth_service.dart';
 import '../../home/presentation/home_screen.dart';
+import 'register_screen.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/auth_shell.dart';
 
@@ -13,37 +13,66 @@ class LoginScreen extends StatefulWidget {
 
 class LoginScreenState extends State<LoginScreen> {
   final AuthService _authService = AuthService();
-  final _formkey = GlobalKey<FormState>();
-  TextEditingController emailController = TextEditingController();
-  TextEditingController passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
   bool isLoading = false;
+  bool isGoogleLoading = false;
   bool obscurePassword = true;
 
+  void _showError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+    );
+  }
+
+  void _goHome() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const HomeScreen()),
+    );
+  }
+
   Future<void> login() async {
+    setState(() => isLoading = true);
     try {
-      setState(() => isLoading = true);
       await _authService.login(
         emailController.text.trim(),
         passwordController.text.trim(),
       );
-      if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
+      if (!mounted) return;
+      _goHome();
+      return;
+    } catch (e) {
+      _showError(e);
+    }
+    if (mounted) setState(() => isLoading = false);
+  }
+
+  Future<void> _googleSignIn() async {
+    setState(() => isGoogleLoading = true);
+    try {
+      final result = await _authService.signInWithGoogle();
+      if (result != null && mounted) {
+        _goHome();
+        return;
       }
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-        );
-      }
+      _showError(e);
     }
-    setState(() => isLoading = false);
+    if (mounted) setState(() => isGoogleLoading = false);
+  }
+
+  void _submit() {
+    if (isLoading) return;
+    if (_formKey.currentState!.validate()) login();
   }
 
   void _showForgotPasswordDialog() {
-    final resetEmailController = TextEditingController();
+    final resetEmailController = TextEditingController(
+      text: emailController.text.trim(),
+    );
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -82,20 +111,15 @@ class LoginScreenState extends State<LoginScreen> {
 
               try {
                 await _authService.resetPassword(email);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text("Password reset email sent! Check your inbox."),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Password reset email sent! Check your inbox."),
+                    backgroundColor: Colors.green,
+                  ),
+                );
               } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-                  );
-                }
+                _showError(e);
               }
             },
             child: const Text(
@@ -105,25 +129,7 @@ class LoginScreenState extends State<LoginScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Future<void> _googleSignIn() async {
-    try {
-      final result = await _authService.signInWithGoogle();
-      if (result != null && context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-        );
-      }
-    }
+    ).then((_) => resetEmailController.dispose());
   }
 
   @override
@@ -149,128 +155,149 @@ class LoginScreenState extends State<LoginScreen> {
         },
       ),
       child: Form(
-        key: _formkey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const AuthLabel("Email"),
-            TextFormField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: fieldDecoration(
-                hint: "you@example.com",
-                icon: Icons.email_outlined,
-                fill: Colors.white,
+        key: _formKey,
+        child: AutofillGroup(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const AuthLabel("Email"),
+              TextFormField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.email],
+                decoration: fieldDecoration(
+                  hint: "you@example.com",
+                  icon: Icons.email_outlined,
+                  fill: Colors.white,
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return "Email required";
+                  }
+                  if (!value.contains("@")) return "Enter valid email";
+                  return null;
+                },
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) return "Email required";
-                if (!value.contains("@")) return "Enter valid email";
-                return null;
-              },
-            ),
-            const SizedBox(height: 18),
-            const AuthLabel("Password"),
-            TextFormField(
-              controller: passwordController,
-              obscureText: obscurePassword,
-              decoration: fieldDecoration(
-                hint: "Enter your password",
-                fill: Colors.white,
-                icon: Icons.lock_outline,
-                suffix: IconButton(
-                  icon: Icon(
-                    obscurePassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    color: AppColors.muted,
-                    size: 20,
-                  ),
-                  onPressed: () => setState(() => obscurePassword = !obscurePassword),
-                ),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) return "Password required";
-                if (value.length < 6) return "Minimum 6 characters";
-                return null;
-              },
-            ),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: _showForgotPasswordDialog,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text(
-                  "Forgot password?",
-                  style: TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            AuthButton(
-              label: "Login",
-              loading: isLoading,
-              onPressed: () {
-                if (_formkey.currentState!.validate()) login();
-              },
-            ),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                const Expanded(child: Divider(color: AppColors.border)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  child: Text(
-                    "or continue with",
-                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
-                  ),
-                ),
-                const Expanded(child: Divider(color: AppColors.border)),
-              ],
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: OutlinedButton(
-                onPressed: _googleSignIn,
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  side: const BorderSide(color: AppColors.border, width: 1.4),
-                ),
-                child: const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "G",
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF4285F4),
-                      ),
+              const SizedBox(height: 14),
+
+              const AuthLabel("Password"),
+              TextFormField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                textInputAction: TextInputAction.done,
+                autofillHints: const [AutofillHints.password],
+                onFieldSubmitted: (_) => _submit(),
+                decoration: fieldDecoration(
+                  hint: "Enter your password",
+                  fill: Colors.white,
+                  icon: Icons.lock_outline,
+                  suffix: IconButton(
+                    icon: Icon(
+                      obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: AppColors.muted,
+                      size: 20,
                     ),
-                    SizedBox(width: 12),
-                    Text(
-                      "Google",
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.dark,
-                      ),
+                    onPressed: () =>
+                        setState(() => obscurePassword = !obscurePassword),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return "Password required";
+                  if (value.length < 6) return "Minimum 6 characters";
+                  return null;
+                },
+              ),
+
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _showForgotPasswordDialog,
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.only(top: 10, bottom: 6),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text(
+                    "Forgot password?",
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+
+              AuthButton(
+                label: "Login",
+                loading: isLoading,
+                onPressed: _submit,
+              ),
+              const SizedBox(height: 18),
+
+              Row(
+                children: [
+                  const Expanded(child: Divider(color: AppColors.border)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text(
+                      "or continue with",
+                      style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                    ),
+                  ),
+                  const Expanded(child: Divider(color: AppColors.border)),
+                ],
+              ),
+              const SizedBox(height: 18),
+
+              SizedBox(
+                height: 54,
+                child: OutlinedButton(
+                  onPressed: (isLoading || isGoogleLoading) ? null : _googleSignIn,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    side: const BorderSide(color: AppColors.border, width: 1.4),
+                  ),
+                  child: isGoogleLoading
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "G",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF4285F4),
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        "Google",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.dark,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

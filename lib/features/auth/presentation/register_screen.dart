@@ -12,38 +12,49 @@ class RegisterScreen extends StatefulWidget {
 
 class RegisterScreenState extends State<RegisterScreen> {
   final AuthService _authService = AuthService();
-  final _formkey = GlobalKey<FormState>();
-  TextEditingController nameController = TextEditingController();
-  TextEditingController emailController = TextEditingController();
-  TextEditingController passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController passwordController = TextEditingController();
   bool isLoading = false;
   bool obscurePassword = true;
 
-  Future<void> register() async {
-    try {
-      setState(() => isLoading = true);
+  void _showError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+    );
+  }
 
+  Future<void> register() async {
+    setState(() => isLoading = true);
+    try {
       await _authService.register(
         emailController.text.trim(),
         passwordController.text.trim(),
         nameController.text.trim(),
       );
-
-      if (context.mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Account created! Please log in."),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+      );
+      return;
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-        );
-      }
+      _showError(e);
     }
+    if (mounted) setState(() => isLoading = false);
+  }
 
-    setState(() => isLoading = false);
+  void _submit() {
+    if (isLoading) return;
+    if (_formKey.currentState!.validate()) register();
   }
 
   @override
@@ -70,84 +81,100 @@ class RegisterScreenState extends State<RegisterScreen> {
         },
       ),
       child: Form(
-        key: _formkey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const AuthLabel("Full name"),
-            TextFormField(
-              controller: nameController,
-              textCapitalization: TextCapitalization.words,
-              decoration: fieldDecoration(
-                hint: "John Doe",
-                icon: Icons.person_outline,
-                fill: Colors.white,
+        key: _formKey,
+        child: AutofillGroup(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const AuthLabel("Full name"),
+              TextFormField(
+                controller: nameController,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.name],
+                decoration: fieldDecoration(
+                  hint: "John Doe",
+                  icon: Icons.person_outline,
+                  fill: Colors.white,
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return "Name required";
+                  }
+                  return null;
+                },
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) return "Name required";
-                return null;
-              },
-            ),
-            const SizedBox(height: 18),
-            const AuthLabel("Email"),
-            TextFormField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: fieldDecoration(
-                hint: "you@example.com",
-                icon: Icons.email_outlined,
-                fill: Colors.white,
+              const SizedBox(height: 14),
+
+              const AuthLabel("Email"),
+              TextFormField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.email],
+                decoration: fieldDecoration(
+                  hint: "you@example.com",
+                  icon: Icons.email_outlined,
+                  fill: Colors.white,
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return "Email required";
+                  }
+                  if (!value.contains("@") || !value.contains(".")) {
+                    return "Enter a valid email";
+                  }
+                  return null;
+                },
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) return "Email required";
-                if (!value.contains("@") || !value.contains(".")) {
-                  return "Enter a valid email";
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 18),
-            const AuthLabel("Password"),
-            TextFormField(
-              controller: passwordController,
-              obscureText: obscurePassword,
-              decoration: fieldDecoration(
-                hint: "Create a password",
-                fill: Colors.white,
-                icon: Icons.lock_outline,
-                suffix: IconButton(
-                  icon: Icon(
-                    obscurePassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
-                    color: AppColors.muted,
-                    size: 20,
+              const SizedBox(height: 14),
+
+              const AuthLabel("Password"),
+              TextFormField(
+                controller: passwordController,
+                obscureText: obscurePassword,
+                textInputAction: TextInputAction.done,
+                autofillHints: const [AutofillHints.newPassword],
+                onFieldSubmitted: (_) => _submit(),
+                decoration: fieldDecoration(
+                  hint: "Create a password",
+                  fill: Colors.white,
+                  icon: Icons.lock_outline,
+                  suffix: IconButton(
+                    icon: Icon(
+                      obscurePassword
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      color: AppColors.muted,
+                      size: 20,
+                    ),
+                    onPressed: () =>
+                        setState(() => obscurePassword = !obscurePassword),
                   ),
-                  onPressed: () => setState(() => obscurePassword = !obscurePassword),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) return "Password required";
+                  if (value.length < 6) return "Minimum 6 characters";
+                  return null;
+                },
+              ),
+              const Padding(
+                padding: EdgeInsets.only(top: 6, left: 4),
+                child: Text(
+                  "Use at least 6 characters.",
+                  style: TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
               ),
-              validator: (value) {
-                if (value == null || value.isEmpty) return "Password required";
-                if (value.length < 6) return "Minimum 6 characters";
-                return null;
-              },
-            ),
-            const Padding(
-              padding: EdgeInsets.only(top: 8, left: 4),
-              child: Text(
-                "Use at least 6 characters.",
-                style: TextStyle(fontSize: 12, color: AppColors.muted),
+              const SizedBox(height: 20),
+
+              AuthButton(
+                label: "Create account",
+                loading: isLoading,
+                onPressed: _submit,
               ),
-            ),
-            const SizedBox(height: 28),
-            AuthButton(
-              label: "Create account",
-              loading: isLoading,
-              onPressed: () {
-                if (_formkey.currentState!.validate()) register();
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

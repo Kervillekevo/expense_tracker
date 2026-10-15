@@ -134,7 +134,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return total;
   }
 
-  // points for the little chart, depends on the selected period
   List<double> _trend(List<Transaction> all, String type) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -168,7 +167,6 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         start = DateTime(today.year, today.month, 1);
     }
-    // a line needs at least two points
     if (!start.isBefore(today)) {
       start = DateTime(today.year, today.month, today.day - 1);
     }

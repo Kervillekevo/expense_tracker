@@ -39,22 +39,29 @@ class AuthShell extends StatelessWidget {
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const _Brand(),
-                        const SizedBox(height: 44),
+                        // Brand hero: takes the free height and centers itself
+                        const Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 24),
+                            child: Center(child: _Hero()),
+                          ),
+                        ),
+
+                        // Form block
                         Text(
                           title,
                           style: const TextStyle(
-                            fontSize: 32,
-                            height: 1.1,
+                            fontSize: 28,
+                            height: 1.15,
                             fontWeight: FontWeight.bold,
                             color: AppColors.dark,
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 6),
                         Text(
                           subtitle,
                           style: const TextStyle(
@@ -63,10 +70,9 @@ class AuthShell extends StatelessWidget {
                             color: AppColors.muted,
                           ),
                         ),
-                        const SizedBox(height: 32),
-                        child,
                         const SizedBox(height: 24),
-                        const Spacer(),
+                        child,
+                        const SizedBox(height: 16),
                         footer,
                       ],
                     ),
@@ -97,33 +103,42 @@ class _Blob extends StatelessWidget {
   }
 }
 
-class _Brand extends StatelessWidget {
-  const _Brand();
+class _Hero extends StatelessWidget {
+  const _Hero();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 42,
-          height: 42,
+          width: 76,
+          height: 76,
           decoration: BoxDecoration(
             color: AppColors.dark,
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.dark.withValues(alpha: 0.18),
+                blurRadius: 24,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
           child: const Icon(
             Icons.account_balance_wallet_outlined,
             color: AppColors.accent,
-            size: 22,
+            size: 38,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(height: 16),
         const Text(
           "Expense Tracker",
           style: TextStyle(
             color: AppColors.dark,
-            fontSize: 16,
+            fontSize: 20,
             fontWeight: FontWeight.bold,
+            letterSpacing: 0.2,
           ),
         ),
       ],
@@ -168,7 +183,7 @@ class AuthButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 56,
+      height: 54,
       child: ElevatedButton(
         onPressed: loading ? null : onPressed,
         style: ElevatedButton.styleFrom(
@@ -183,17 +198,27 @@ class AuthButton extends StatelessWidget {
             ? const SizedBox(
           width: 22,
           height: 22,
-          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+          child: CircularProgressIndicator(
+            color: Colors.white,
+            strokeWidth: 2,
+          ),
         )
             : Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               label,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.arrow_forward_rounded, size: 18, color: AppColors.accent),
+            const Icon(
+              Icons.arrow_forward_rounded,
+              size: 18,
+              color: AppColors.accent,
+            ),
           ],
         ),
       ),
